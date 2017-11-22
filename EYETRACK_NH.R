@@ -3,7 +3,7 @@ library(ggplot2)
 const.rep_subs=77 #Reported subjects
 const.rep_sample_rate=(1/500)*1000 #Reported sample rate
 
-setwd("/Users/nickhedger/Documents/NH_EYETRACK_NOODLE")
+setwd("/Users/nicholashedger/Documents/Github/NH_EYETRACK_NOODLE")
 DATA   <- read.csv("FV_data_raw.csv")
 
 head(DATA)
@@ -42,25 +42,22 @@ ggplot(dat[dat$SUB==subj,],aes(x=CURRENT_SAC_END_X,y=CURRENT_SAC_END_Y))+geom_re
   geom_text(aes(label=index))+geom_path(color="blue")
 }
 
-
+Plotfix(DATA,1)
 # Need to 
 # 1) Upsample each trial so that there are 2501 data points per trial.
 # 2) Define whether or not the data was in a particular ROI (boolean).
 
-
-
-
-DATA2=DATA[as.numeric(DATA$SUB)<30,]
+DATA2=DATA[as.numeric(DATA$SUB)<11,]
 DATA2=DATA2[DATA2$CURRENT_SAC_START_TIME<5000,]
 DATA2=DATA2[DATA2$CURRENT_SAC_START_TIME>70,]
 
 DATA2$SUB=factor(DATA2$SUB)
-NEWFRAMELEN=(80*29)*500
+NEWFRAMELEN=(80*10)*500
 
 EXPDATA_FRAME=data.frame(matrix(ncol=3,nrow=NEWFRAMELEN))
 EXPDATA_FRAME$samp=rep(seq(0,5000,length=500))
-EXPDATA_FRAME$ps=rep(as.numeric(levels(DATA2$SUB)),each=nrow(EXPDATA_FRAME)/29)
-EXPDATA_FRAME$trial=rep(as.numeric(levels(DATA2$TRIAL)),each=nrow(EXPDATA_FRAME)/(29*80))
+EXPDATA_FRAME$ps=rep(as.numeric(levels(DATA2$SUB)),each=nrow(EXPDATA_FRAME)/10)
+EXPDATA_FRAME$trial=rep(as.numeric(levels(DATA2$TRIAL)),each=nrow(EXPDATA_FRAME)/(10*80))
 
 
 for (subject in 1:length(levels(DATA2$SUB))) {
@@ -94,4 +91,42 @@ for (t in 1:length(times)){
 }
 
 
+
+
+
+EXPDATA_FRAME$isinL=factor(ifelse(EXPDATA_FRAME$X1<712 & EXPDATA_FRAME$X1>168 & EXPDATA_FRAME$X2<822 & EXPDATA_FRAME$X2>378 ,1,""))
+EXPDATA_FRAME$isinR=factor(ifelse(EXPDATA_FRAME$X1<1432 & EXPDATA_FRAME$X1>888 & EXPDATA_FRAME$X2<822 & EXPDATA_FRAME$X2>378 ,1,""))
+
+EXPDATA_FRAME$AOI=rep(0,nrow(EXPDATA_FRAME))
+
+
+
+for (i in 1:nrow(EXPDATA_FRAME)){
+  print(i)
+  if (is.na(EXPDATA_FRAME$X1[i])){
+    EXPDATA_FRAME$AOI[i]=="N"}
+  else if (EXPDATA_FRAME$X1[i]<1432 & EXPDATA_FRAME$X1[i]>888 & EXPDATA_FRAME$X2[i]<822 & EXPDATA_FRAME$X2[i]>378){
+  EXPDATA_FRAME$AOI[i]="Right"}
+  else if (EXPDATA_FRAME$X1[i]<712 & EXPDATA_FRAME$X1[i]>168 & EXPDATA_FRAME$X2[i]<822 & EXPDATA_FRAME$X2[i]>378){
+    EXPDATA_FRAME$AOI[i]="Left"}
+}
+
+
+
+
+Plottime=function(dat,subj,trial)
+{xboundu=1432
+yboundu=822
+xboundl=168
+yboundl=378
+ggplot(dat[dat$ps==subj & dat$trial==trial,],aes(x=X1,y=X2))+geom_rect(xmin =168 ,xmax=712,ymin=yboundl,ymax=yboundu)+geom_rect(xmin =888 ,xmax=1432,ymin=yboundl,ymax=yboundu)+geom_point(size=3,alpha=.4,aes(color=AOI))+
+  scale_x_continuous(limits=c(xboundl,xboundu))+scale_y_continuous(limits=c(yboundl,yboundu))+
+  geom_path(color="blue")
+}
+
+sdx=Plottime(EXPDATA_FRAME,1,1)
+
+sd=qplot(EXPDATA_FRAME[EXPDATA_FRAME$ps==1 & EXPDATA_FRAME$trial==58,]$samp,EXPDATA_FRAME[EXPDATA_FRAME$ps==1 & EXPDATA_FRAME$trial==58,]$X1)
+
+multiplot(sdx,sd)
 
