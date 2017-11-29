@@ -148,6 +148,8 @@ for (i in 1:nrow(EXPDATA_FRAME)){
 }
 
 
+
+
 EXPDATA_FRAME$SOCIAL=as.logical(ifelse(EXPDATA_FRAME$X3==EXPDATA_FRAME$AOI,1,0))
 EXPDATA_FRAME$NONSOCIAL=as.logical(ifelse(EXPDATA_FRAME$X3!=EXPDATA_FRAME$AOI & EXPDATA_FRAME$AOI!=0 ,1,0))
 
@@ -163,9 +165,9 @@ ggplot(dat[dat$ps==subj & dat$trial==trial,],aes(x=X1,y=X2))+geom_rect(xmin =168
   geom_path(color="blue")
 }
 
-sdx=Plottime(EXPDATA_FRAME,1,1)
+sdx=Plottime(EXPDATA_FRAME,1,5)
 
-sd=qplot(EXPDATA_FRAME[EXPDATA_FRAME$ps==1 & EXPDATA_FRAME$trial==58,]$samp,EXPDATA_FRAME[EXPDATA_FRAME$ps==1 & EXPDATA_FRAME$trial==58,]$X1)
+sd=qplot(EXPDATA_FRAME[EXPDATA_FRAME$ps==1 & EXPDATA_FRAME$trial==1,]$samp,EXPDATA_FRAME[EXPDATA_FRAME$ps==1 & EXPDATA_FRAME$trial==1,]$X1)
 
 multiplot(sdx,sd)
 
@@ -177,7 +179,7 @@ library("ggplot2")
 
 library("eyetrackingR")
 
-
+COPY=EXPDATA_FRAME
 EXPDATA_FRAME$track=as.logical(rep(0,nrow(EXPDATA_FRAME)))
 
 
@@ -185,24 +187,124 @@ data <- make_eyetrackingr_data(EXPDATA_FRAME,
                                participant_column = "ps",
                                trial_column = "trial",
                                time_column = "samp",
-                               aoi_columns = c('SOCIAL','NONSOCIAL'),
+                               aoi_columns = c('isinL','isinR',"SOCIAL","NONSOCIAL"),
                                treat_non_aoi_looks_as_missing = TRUE,trackloss_column="track"
 )
 
 
-data$isinL=as.logical(data$isinL)
-data$isinR=as.logical(data$isinR)
 
-data$Scramb=factor(data$Scramb,levels=c(1,2),labels=c("Unscrambled","Scrambled"))
+data$X3=factor(data$X3,levels=c(1,2),labels=c("LeftSoc","Rightsoc"))
 
-response_time <- make_time_sequence_data(data, time_bin_size = 200,aois = c("SOCIAL","NONSOCIAL"),summarize_by = "ps")
 
+
+
+response_window_agg_by_sub <- make_time_window_data(data, aois=c("SOCIAL","NONSOCIAL"),summarize_by = "ps")
+
+plot(response_window_agg_by_sub)
+
+response_time <- make_time_sequence_data(data, time_bin_size = 100,aois = c("NONSOCIAL","SOCIAL"),summarize_by = "ps")
 
 plot(response_time)
 
+bysubplot=ggplot(response_time,aes(x=TimeBin,y=Prop))+geom_line(aes(color=AOI))+facet_wrap(~ps,ncol=11)
+
+plot(response_time)
+
+response_timeL <- make_time_sequence_data(data, time_bin_size = 100,aois = c("isinL"),predictor_columns=c("X3"),summarize_by = "ps")
+tb_analysisL <- analyze_time_bins(data = response_timeL,test = "t.test",predictor_column =c("X3"),  alpha = .05,p_adjust_method = 'bonferroni')
+plot(response_timeL, predictor_column = "X3") + theme_light()
+plot(tb_analysisL, type = "estimate") + theme_light()
 
 
-tb_analysis <- analyze_time_bins(data = response_time, test = "t.test", alpha = .05,p_adjust_method = "bonferroni")
+response_timeR <- make_time_sequence_data(data, time_bin_size = 100,aois = c("isinR"),predictor_columns=c("X3"),summarize_by = "ps")
+tb_analysisR <- analyze_time_bins(data = response_timeL,test = "t.test",predictor_column =c("X3"),  alpha = .05,p_adjust_method = 'bonferroni')
+plot(response_timeR, predictor_column = "X3") + theme_light()
+plot(tb_analysisR, type = "estimate") + theme_light()
 
 
-plot(tb_analysis, type = "estimate") + theme_light()
+response_timeG <- make_time_sequence_data(data, time_bin_size = 100,aois = c("isinL","isinR"),predictor_columns=c("X3"),summarize_by = "ps")
+plot(response_timeG, predictor_column = "X3") + theme_light()
+
+
+model_time_sequence <- lmer(Prop ~ AOI*(ot)+(1|ps),data = response_time, REML = FALSE)
+
+broom::tidy(model_time_sequence, effects = "fixed")
+drop1(model_time_sequence, ~., test="Chi")
+
+plot(response_time, predictor_column = "AOI", dv = "Prop", model = model_time_sequence) +theme_light()
+
+
+
+response_window <- subset_by_window(data, window_start_time = 0, window_end_time = 50000, rezero = FALSE)
+
+
+onsets <- make_onset_data(response_window, onset_time = 500, fixation_window_length = 50, target_aoi='SOCIAL',distractor_aoi = 'NONSOCIAL')
+# participants' ability to orient to the trial target overall:
+plot(onsets) + theme(legend.text=element_text(size=5))
+
+onset_switches <- make_switch_data(onsets)
+
+# visualize subject's switch times
+plot(onset_switches)
+
+model_switches <- lmer(FirstSwitch ~ FirstAOI + (1 | ps), data=onset_switches, REML=FALSE)
+
+drop1(model_switches,~.,test="Chi")
+
+tb_analysis <- analyze_time_bins(data = response_time, test = "t.test",predictor_column = "AOI", alpha = .05,p_adjust_method = "bonferroni",treatment_level = NONSOCIAL)
+
+
+plot(tb_analysis,type="ne")
+
+response_window <- subset_by_window(data,window_start_time = 0, 
+                                    window_end_time = 5000, rezero = FALSE)
+
+data_summaryL <- describe_data(response_window,describe_column='isinL', group_columns=c('X3','ps'))
+xL=plot(data_summaryL)
+XL2=xL+xlab("Social Image Location")+ggtitle("Proportion viewing left image")
+
+
+data_summaryR <- describe_data(response_window,describe_column='isinR', group_columns=c('X3','ps'))
+xR=plot(data_summaryR)
+xR2=xR+xlab("Social Image Location")+ggtitle("Proportion viewing right image")
+
+
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  require(grid)
+  
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+  
+  numPlots = length(plots)
+  
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                     ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+  
+  if (numPlots==1) {
+    print(plots[[1]])
+    
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+    
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+      
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+
+
+
+multiplot(XL2,xR2,cols=2)
