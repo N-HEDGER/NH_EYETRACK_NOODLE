@@ -60,8 +60,6 @@ DATA2=DATA
 
 # Unscrambled only
 DATA2=DATA2[DATA2$trial_1<41,]
-
-
 DATA2=DATA2[DATA2$CURRENT_SAC_START_TIME<5000,]
 DATA2=DATA2[DATA2$CURRENT_SAC_START_TIME>70,]
 
@@ -127,6 +125,86 @@ for (t in 1:length(times)){
 
   }
 }
+
+# Now scram
+DATAS=DATA[DATA$trial_1>40,]
+DATAS=DATAS[DATAS$CURRENT_SAC_START_TIME<5000,]
+DATAS=DATAS[DATAS$CURRENT_SAC_START_TIME>70,]
+
+DATAS$SUB=factor(DATAS$SUB)
+DATAS$TRIAL=factor(DATAS$TRIAL)
+
+# 500 samples per trial (100 hz)
+NEWFRAMELEN=(40*77)*500
+
+# Add back in the time dimension (500 samples per trial)
+EXPDATA_FRAME=data.frame(matrix(ncol=3,nrow=NEWFRAMELEN))
+EXPDATA_FRAME$samp=rep(seq(0,5000,length=500))
+EXPDATA_FRAME$ps=rep(as.numeric(levels(DATAS$SUB)),each=nrow(EXPDATA_FRAME)/77)
+EXPDATA_FRAME$trial=rep(as.numeric(levels(DATAS$TRIAL)),each=nrow(EXPDATA_FRAME)/(77*40))
+
+
+# Accidentally overwritten EXPDATA_FRAME
+for (subject in 1:length(levels(DATAS$SUB))) {
+  for (trial in 1:length(levels(DATAS$TRIAL))) {
+    trial=(trial+40)
+    # If there is data for the trial
+    if (nrow(DATAS[DATAS$SUB==subject & DATAS$TRIAL ==trial,])>0) {
+      x=sprintf(c("Doing subject %f","Trial %f"),c(subject,trial))
+      print(x)
+      # Get the starting points
+      locxs=DATAS[DATAS$SUB==subject & DATAS$TRIAL==trial,]$CURRENT_SAC_START_X
+      locys=DATAS[DATAS$SUB==subject & DATAS$TRIAL==trial,]$CURRENT_SAC_START_Y
+      
+      # Get the ending points
+      locx=DATAS[DATAS$SUB==subject & DATAS$TRIAL==trial,]$CURRENT_SAC_END_X
+      locy=DATAS[DATAS$SUB==subject & DATAS$TRIAL==trial,]$CURRENT_SAC_END_Y
+      
+      # Get the side of the social stim
+      side=DATAS[DATAS$SUB==subject & DATAS$TRIAL==trial,]$side[1]
+      
+      # Resample the times
+      times=round((DATAS[DATAS$SUB==subject & DATAS$TRIAL==trial,]$CURRENT_SAC_START_TIME/10))
+      
+      # Starting x
+      EXPDATA_FRAME[EXPDATA_FRAME$ps==subject & EXPDATA_FRAME$trial==trial,][1:times[1],]$X1=locxs[1]
+      # Starting y
+      EXPDATA_FRAME[EXPDATA_FRAME$ps==subject & EXPDATA_FRAME$trial==trial,][1:times[1],]$X2=locys[1]
+      # Side
+      EXPDATA_FRAME[EXPDATA_FRAME$ps==subject & EXPDATA_FRAME$trial==trial,]$X3=rep(side,nrow(EXPDATA_FRAME[EXPDATA_FRAME$ps==subject & EXPDATA_FRAME$trial==trial,]))
+      for (t in 1:length(times)){
+        if (t<length(times)){
+          EXPDATA_FRAME[EXPDATA_FRAME$ps==subject & EXPDATA_FRAME$trial==trial,][times[t]:times[t+1],]$X1=locx[t]
+          EXPDATA_FRAME[EXPDATA_FRAME$ps==subject & EXPDATA_FRAME$trial==trial,][times[t]:times[t+1],]$X2=locy[t]
+          
+        }
+        
+        else{
+          EXPDATA_FRAME[EXPDATA_FRAME$ps==subject & EXPDATA_FRAME$trial==trial,][times[t]:nrow(EXPDATA_FRAME[EXPDATA_FRAME$ps==subject & EXPDATA_FRAME$trial==trial,]),]$X1=locx[t]
+          EXPDATA_FRAME[EXPDATA_FRAME$ps==subject & EXPDATA_FRAME$trial==trial,][times[t]:nrow(EXPDATA_FRAME[EXPDATA_FRAME$ps==subject & EXPDATA_FRAME$trial==trial,]),]$X2=locy[t]
+        }
+      }
+    }
+    else{
+      y=sprintf(c("Cannot do subject %f","Trial %f"),c(subject,trial))
+      print(y)
+    }
+    
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
