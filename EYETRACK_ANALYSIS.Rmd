@@ -258,7 +258,12 @@ Observers take longer to switch from the social AOI, but this effect is only sig
 
 ### Visualise individual data (intact)
 ```{r}
-ggplot(response_time[response_time$scramb==1,],aes(x=TimeBin,y=Prop))+facet_wrap(~ps,nrow=8)+geom_point(aes(colour=AOI),size=1)
+
+response_time_mod_in=cbind(response_time[response_time$scramb==1 & !is.na(response_time$Prop),],predict(model_time_sequence_intact3))
+
+colnames(response_time_mod_in)=c(colnames(response_time),"pred")
+
+ggplot(response_time_mod_in[response_time_mod_in$scramb==1,],aes(x=TimeBin,y=Prop))+facet_wrap(~ps,nrow=8)+geom_line(aes(x=TimeBin,y=pred,colour=AOI),size=2,linetype="solid")+geom_point(aes(colour=AOI),size=0.5,shape=6)
 ```
 
 
@@ -266,7 +271,12 @@ ggplot(response_time[response_time$scramb==1,],aes(x=TimeBin,y=Prop))+facet_wrap
 
 
 ```{r}
-ggplot(response_time[response_time$scramb==2,],aes(x=TimeBin,y=Prop))+facet_wrap(~ps,nrow=8)+geom_point(aes(colour=AOI),size=1)
+
+response_time_mod_sc=cbind(response_time[response_time$scramb==2 & !is.na(response_time$Prop),],predict(model_time_sequence_scramb4))
+
+colnames(response_time_mod_sc)=c(colnames(response_time),"pred")
+
+ggplot(response_time_mod_sc[response_time_mod_sc$scramb==2,],aes(x=TimeBin,y=Prop))+facet_wrap(~ps,nrow=8)+geom_line(aes(x=TimeBin,y=pred,colour=AOI),size=2)+geom_point(aes(colour=AOI),size=0.5,shape=6)
 ```
 
 ### Plot linear and quadratic random effects
@@ -298,3 +308,66 @@ curvesall$scramb=factor(curvesall$scramb,levels=c(1,2),labels=c("intact","scramb
 ggplot(curvesall,aes(x=timebin,y=indfull))+facet_wrap(~sub,nrow=8)+geom_point(aes(colour=scramb))
 
 ```
+
+### Load in the EQ Data
+
+```{r}
+EQ_DATA=read.csv('EQ_Data.csv')
+EQ=EQ_DATA$EQ.Total
+EQS=EQ_DATA$EQ.Social
+EQE=EQ_DATA$EQ.Emotion
+EQC=EQ_DATA$EQ.Cognitive
+
+library(stringr)
+
+# EQ data doesnt belong to everyone (only 69 people)
+EQ_PS=as.numeric(str_extract(EQ_DATA$pps, "[0-9]+"))
+```
+
+### Perform a Bootstrapped cluster-based permutation analysis
+
+```{r}
+
+# Define threshold based on alpha = .05 (two tailed)
+num_sub = length(unique((EQ_PS)))
+threshold_t = qt(p = 1 - .05/2, df = num_sub-1)
+
+response_time_new <- make_time_sequence_data(data, time_bin_size = 100,aois = c("SOCIAL"),predictor_columns = c("scramb"),summarize_by="ps")
+
+response_time_new$EQ=rep(NA,nrow(response_time_new))
+
+# Add EQ data. Here I add the 'Social' subscale (no effects are detected for other sub-scales, or for total EQ score)
+for (sub in 1:length(EQ_PS)-1){
+  response_time_new[response_time_new$ps==EQ_PS[sub],]$EQ=EQS[sub]
+}
+
+# Intact images, look for the effect of EQS in each time bin
+df_timeclust_between <- make_time_cluster_data(response_time_new[response_time_new$scramb==1,], test= "lm",predictor_column = "EQ", threshold = threshold_t)
+
+plot(df_timeclust_between) +  ylab("T-Statistic") + theme_light()
+```
+
+There are 3 clusters. Perform a bootstrapping analysis to see if these could have been obtained by chance. 
+
+```{r}
+clust_analysis_between <- analyze_time_clusters(df_timeclust_between, within_subj = FALSE, samples=1000)
+
+summary(clust_analysis_between)
+plot(clust_analysis_between)
+```
+
+Only the last cluster is significant after the permutation test. The social component of the EQ predicts enhanced gaze towards the end of the trial 4200ms onwards (p=.047).
+
+As a sanity check, I also applied the same tests for scrambled images and found no effects.
+
+### See whether the random effects for the linear and quadratic terms of the growthcurve model are related to empathy.
+
+```{r}
+linear=rep(0,68)
+for (sub in 1:length(EQ_PS)-1){
+  linear[sub]=ranef(model_time_sequence_intact3)$ps$ot2[sub]
+}
+```
+
+
+

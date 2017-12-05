@@ -800,11 +800,11 @@ Observers take longer to switch from the social AOI, but this effect is only sig
 ### Visualise individual data (intact)
 
 ```r
-ggplot(response_time[response_time$scramb==1,],aes(x=TimeBin,y=Prop))+facet_wrap(~ps,nrow=8)+geom_point(aes(colour=AOI),size=1)
-```
+response_time_mod_in=cbind(response_time[response_time$scramb==1 & !is.na(response_time$Prop),],predict(model_time_sequence_intact3))
 
-```
-## Warning: Removed 88 rows containing missing values (geom_point).
+colnames(response_time_mod_in)=c(colnames(response_time),"pred")
+
+ggplot(response_time_mod_in[response_time_mod_in$scramb==1,],aes(x=TimeBin,y=Prop))+facet_wrap(~ps,nrow=8)+geom_line(aes(x=TimeBin,y=pred,colour=AOI),size=2,linetype="solid")+geom_point(aes(colour=AOI),size=0.5,shape=6)
 ```
 
 ![](EYETRACK_ANALYSIS_files/figure-html/unnamed-chunk-17-1.png)<!-- -->
@@ -815,11 +815,11 @@ ggplot(response_time[response_time$scramb==1,],aes(x=TimeBin,y=Prop))+facet_wrap
 
 
 ```r
-ggplot(response_time[response_time$scramb==2,],aes(x=TimeBin,y=Prop))+facet_wrap(~ps,nrow=8)+geom_point(aes(colour=AOI),size=1)
-```
+response_time_mod_sc=cbind(response_time[response_time$scramb==2 & !is.na(response_time$Prop),],predict(model_time_sequence_scramb4))
 
-```
-## Warning: Removed 106 rows containing missing values (geom_point).
+colnames(response_time_mod_sc)=c(colnames(response_time),"pred")
+
+ggplot(response_time_mod_sc[response_time_mod_sc$scramb==2,],aes(x=TimeBin,y=Prop))+facet_wrap(~ps,nrow=8)+geom_line(aes(x=TimeBin,y=pred,colour=AOI),size=2)+geom_point(aes(colour=AOI),size=0.5,shape=6)
 ```
 
 ![](EYETRACK_ANALYSIS_files/figure-html/unnamed-chunk-18-1.png)<!-- -->
@@ -855,3 +855,113 @@ ggplot(curvesall,aes(x=timebin,y=indfull))+facet_wrap(~sub,nrow=8)+geom_point(ae
 ```
 
 ![](EYETRACK_ANALYSIS_files/figure-html/unnamed-chunk-19-1.png)<!-- -->
+
+### Load in the EQ Data
+
+
+```r
+EQ_DATA=read.csv('EQ_Data.csv')
+EQ=EQ_DATA$EQ.Total
+EQS=EQ_DATA$EQ.Social
+EQE=EQ_DATA$EQ.Emotion
+EQC=EQ_DATA$EQ.Cognitive
+
+library(stringr)
+```
+
+```
+## Warning: package 'stringr' was built under R version 3.2.5
+```
+
+```r
+# EQ data doesnt belong to everyone (only 69 people)
+EQ_PS=as.numeric(str_extract(EQ_DATA$pps, "[0-9]+"))
+```
+
+### Perform a Bootstrapped cluster-based permutation analysis
+
+
+```r
+# Define threshold based on alpha = .05 (two tailed)
+num_sub = length(unique((EQ_PS)))
+threshold_t = qt(p = 1 - .05/2, df = num_sub-1)
+
+response_time_new <- make_time_sequence_data(data, time_bin_size = 100,aois = c("SOCIAL"),predictor_columns = c("scramb"),summarize_by="ps")
+```
+
+```
+## Warning in make_time_sequence_data(data, time_bin_size = 100, aois =
+## c("SOCIAL"), : With the current time-bin size, the final time-bin has a
+## much smaller number of distinct samples than the other time-bins. Consider
+## choosing a different time-bin size or using 'subset_by_window' to remove
+## this portion of the trial.
+```
+
+```r
+response_time_new$EQ=rep(NA,nrow(response_time_new))
+
+# Add EQ data. Here I add the 'Social' subscale (no effects are detected for other sub-scales, or for total EQ score)
+for (sub in 1:length(EQ_PS)-1){
+  response_time_new[response_time_new$ps==EQ_PS[sub],]$EQ=EQS[sub]
+}
+
+# Intact images, look for the effect of EQS in each time bin
+df_timeclust_between <- make_time_cluster_data(response_time_new[response_time_new$scramb==1,], test= "lm",predictor_column = "EQ", threshold = threshold_t)
+
+plot(df_timeclust_between) +  ylab("T-Statistic") + theme_light()
+```
+
+![](EYETRACK_ANALYSIS_files/figure-html/unnamed-chunk-21-1.png)<!-- -->
+
+There are 3 clusters. Perform a bootstrapping analysis to see if these could have been obtained by chance. 
+
+
+```r
+clust_analysis_between <- analyze_time_clusters(df_timeclust_between, within_subj = FALSE, samples=1000)
+```
+
+```
+## Install package 'pbapply' for a progress bar in this function.
+```
+
+```r
+summary(clust_analysis_between)
+```
+
+```
+## Test Type:	 lm 
+## Predictor:	 EQ 
+## Formula:	 Prop ~ EQ 
+## Null Distribution   ====== 
+##  Mean:		 -0.4788 
+##  2.5%:		 -21.2021 
+## 97.5%:		 14.4226 
+## Summary of Clusters ======
+##   Cluster Direction SumStatistic StartTime EndTime Probability
+## 1       1  Positive     6.729117       700    1000       0.160
+## 2       2  Positive     8.717798      3400    3800       0.126
+## 3       3  Positive    24.567173      4200    5100       0.030
+```
+
+```r
+plot(clust_analysis_between)
+```
+
+![](EYETRACK_ANALYSIS_files/figure-html/unnamed-chunk-22-1.png)<!-- -->
+
+Only the last cluster is significant after the permutation test. The social component of the EQ predicts enhanced gaze towards the end of the trial 4200ms onwards (p=.047).
+
+As a sanity check, I also applied the same tests for scrambled images and found no effects.
+
+### See whether the random effects for the linear and quadratic terms of the growthcurve model are related to empathy.
+
+
+```r
+linear=rep(0,68)
+for (sub in 1:length(EQ_PS)-1){
+  linear[sub]=ranef(model_time_sequence_intact3)$ps$ot2[sub]
+}
+```
+
+
+
