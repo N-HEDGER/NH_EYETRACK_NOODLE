@@ -3,7 +3,7 @@ library(ggplot2)
 const.rep_subs=77 #Reported subjects
 const.rep_sample_rate=(1/500)*1000 #Reported sample rate
 
-setwd("/Users/nicholashedger/Documents/Github/NH_EYETRACK_NOODLE")
+setwd("/Users/nickhedger/Documents/NH_EYETRACK_NOODLE")
 DATA   <- read.csv("FV_data_raw.csv")
 
 head(DATA)
@@ -194,42 +194,29 @@ for (subject in 1:length(levels(DATAS$SUB))) {
 }
 
 
+# first half is intact, second is scrambled.
+EXPDATA_FRAME_BIG=rbind(EXPDATA_FRAME,EXPDATA_FRAMES)
 
 
+EXPDATA_FRAME_BIG$isinL=as.logical(ifelse(EXPDATA_FRAME_BIG$X1<712 & EXPDATA_FRAME_BIG$X1>168 & EXPDATA_FRAME_BIG$X2<822 & EXPDATA_FRAME_BIG$X2>378 ,1,0))
+EXPDATA_FRAME_BIG$isinR=as.logical(ifelse(EXPDATA_FRAME_BIG$X1<1432 & EXPDATA_FRAME_BIG$X1>888 & EXPDATA_FRAME_BIG$X2<822 & EXPDATA_FRAME_BIG$X2>378 ,1,0))
+
+EXPDATA_FRAME_BIG$scramb=rep(c(1,2),each=1540000)
 
 
+EXPDATA_FRAME_BIG$AOI=rep(0,nrow(EXPDATA_FRAME_BIG))
 
-
-
-
-
-
-
-
-
-
-EXPDATA_FRAME$isinL=as.logical(ifelse(EXPDATA_FRAME$X1<712 & EXPDATA_FRAME$X1>168 & EXPDATA_FRAME$X2<822 & EXPDATA_FRAME$X2>378 ,1,0))
-EXPDATA_FRAME$isinR=as.logical(ifelse(EXPDATA_FRAME$X1<1432 & EXPDATA_FRAME$X1>888 & EXPDATA_FRAME$X2<822 & EXPDATA_FRAME$X2>378 ,1,0))
-
-
-
-
-EXPDATA_FRAME$AOI=rep(0,nrow(EXPDATA_FRAME))
-
-for (i in 1:nrow(EXPDATA_FRAME)){
-  if (is.na(EXPDATA_FRAME$X1[i])){
-    EXPDATA_FRAME$AOI[i]==""}
-  else if (EXPDATA_FRAME$X1[i]<1432 & EXPDATA_FRAME$X1[i]>888 & EXPDATA_FRAME$X2[i]<822 & EXPDATA_FRAME$X2[i]>378){
-  EXPDATA_FRAME$AOI[i]=2}
-  else if (EXPDATA_FRAME$X1[i]<712 & EXPDATA_FRAME$X1[i]>168 & EXPDATA_FRAME$X2[i]<822 & EXPDATA_FRAME$X2[i]>378){
-    EXPDATA_FRAME$AOI[i]=1}
+for (i in 1:nrow(EXPDATA_FRAME_BIG)){
+  if (is.na(EXPDATA_FRAME_BIG$X1[i])){
+    EXPDATA_FRAME_BIG$AOI[i]==""}
+  else if (EXPDATA_FRAME_BIG$X1[i]<1432 & EXPDATA_FRAME_BIG$X1[i]>888 & EXPDATA_FRAME_BIG$X2[i]<822 & EXPDATA_FRAME_BIG$X2[i]>378){
+  EXPDATA_FRAME_BIG$AOI[i]=2}
+  else if (EXPDATA_FRAME_BIG$X1[i]<712 & EXPDATA_FRAME_BIG$X1[i]>168 & EXPDATA_FRAME_BIG$X2[i]<822 & EXPDATA_FRAME_BIG$X2[i]>378){
+    EXPDATA_FRAME_BIG$AOI[i]=1}
 }
 
-
-
-
-EXPDATA_FRAME$SOCIAL=as.logical(ifelse(EXPDATA_FRAME$X3==EXPDATA_FRAME$AOI,1,0))
-EXPDATA_FRAME$NONSOCIAL=as.logical(ifelse(EXPDATA_FRAME$X3!=EXPDATA_FRAME$AOI & EXPDATA_FRAME$AOI!=0 ,1,0))
+EXPDATA_FRAME_BIG$SOCIAL=as.logical(ifelse(EXPDATA_FRAME_BIG$X3==EXPDATA_FRAME_BIG$AOI,1,0))
+EXPDATA_FRAME_BIG$NONSOCIAL=as.logical(ifelse(EXPDATA_FRAME_BIG$X3!=EXPDATA_FRAME_BIG$AOI & EXPDATA_FRAME_BIG$AOI!=0 ,1,0))
 
 
 
@@ -257,11 +244,11 @@ library("ggplot2")
 
 library("eyetrackingR")
 
-COPY=EXPDATA_FRAME
-EXPDATA_FRAME$track=as.logical(rep(0,nrow(EXPDATA_FRAME)))
+COPY=EXPDATA_FRAME_BIG
+EXPDATA_FRAME_BIG$track=as.logical(rep(0,nrow(EXPDATA_FRAME_BIG)))
 
 
-data <- make_eyetrackingr_data(EXPDATA_FRAME, 
+data <- make_eyetrackingr_data(EXPDATA_FRAME_BIG, 
                                participant_column = "ps",
                                trial_column = "trial",
                                time_column = "samp",
@@ -270,28 +257,111 @@ data <- make_eyetrackingr_data(EXPDATA_FRAME,
 )
 
 
-
+data$scramb=factor(data$scramb,levels=c(1,2),labels=c("Intact","Scrambled"))
 data$X3=factor(data$X3,levels=c(1,2),labels=c("LeftSoc","Rightsoc"))
 
 
+response_window_agg_by_sub <- make_time_window_data(data, aois=c("SOCIAL","NONSOCIAL"),summarize_by = "ps",predictor_columns = c("scramb"))
+
+plot(response_window_agg_by_sub, predictor_column = "scramb")+geom_point(aes(colour=ps),position = position_jitter(w=0.3))
+
+library(lme4)
+library(afex)
+library(phia)
+library(nlme)
+library(effects)
+
+# Set up model
+model_window <- lmer(Prop ~ AOI*scramb + (1 | ps), data = response_window_agg_by_sub, REML = FALSE)
+
+model_window_p = mixed(Prop ~ AOI*scramb+(1|ps), response_window_agg_by_sub)
+
+# Get p values
+primemodp
+
+# Test interactions
+testInteractions(model_window, fixed=c("scramb"), pairwise=c("AOI"),adjustment="holm")
 
 
-response_window_agg_by_sub <- make_time_window_data(data, aois=c("SOCIAL","NONSOCIAL"),summarize_by = "ps")
 
-plot(response_window_agg_by_sub)
+# Time sequence data
+response_time <- make_time_sequence_data(data, time_bin_size = 100,aois = c("NONSOCIAL","SOCIAL"),summarize_by = "ps",predictor_columns = c("scramb"))
 
-response_time <- make_time_sequence_data(data, time_bin_size = 100,aois = c("NONSOCIAL","SOCIAL"),summarize_by = "ps")
+plot(response_time, predictor_column = "scramb")
 
-plot(response_time)
 
-bysubplot=ggplot(response_time,aes(x=TimeBin,y=Prop))+geom_line(aes(color=AOI))+facet_wrap(~ps,ncol=11)
+model_time_sequence_intact1 <- lmer(Prop ~ AOI+(1|ps),data = response_time[response_time$scramb==1,], REML = FALSE)
+model_time_sequence_intact2 <- lmer(Prop ~ AOI*(ot1)+(1|ps),data = response_time[response_time$scramb==1,], REML = FALSE)
+model_time_sequence_intact3 <- lmer(Prop ~ AOI*(ot1+ot2)+(1|ps),data = response_time[response_time$scramb==1,], REML = FALSE)
+model_time_sequence_intact4 <- lmer(Prop ~ AOI*(ot1+ot2+ot3)+(1|ps),data = response_time[response_time$scramb==1,], REML = FALSE)
 
-plot(response_time)
+anova(model_time_sequence_intact1,model_time_sequence_intact2)
+anova(model_time_sequence_intact2,model_time_sequence_intact3)
+anova(model_time_sequence_intact3,model_time_sequence_intact4)
 
-response_timeL <- make_time_sequence_data(data, time_bin_size = 100,aois = c("isinL"),predictor_columns=c("X3"),summarize_by = "ps")
-tb_analysisL <- analyze_time_bins(data = response_timeL,test = "t.test",predictor_column =c("X3"),  alpha = .05,p_adjust_method = 'bonferroni')
-plot(response_timeL, predictor_column = "X3") + theme_light()
-plot(tb_analysisL, type = "estimate") + theme_light()
+# Indicates that best fitting model is linear + quadratic - so chack that quadratic alone isn't better
+model_time_sequence_intact5 <- lmer(Prop ~ AOI*(ot2)+(1|ps),data = response_time[response_time$scramb==1,], REML = FALSE)
+
+
+anova(model_time_sequence_intact3,model_time_sequence_intact5)
+
+# Model 3 is best fitting
+plot(response_time[response_time$scramb==1,], predictor_column = c("AOI"), dv = "Prop", model = model_time_sequence_intact3) +theme_light()
+
+
+
+model_time_sequence_scramb1 <- lmer(Prop ~ AOI+(1|ps),data = response_time[response_time$scramb==2,], REML = FALSE)
+model_time_sequence_scramb2 <- lmer(Prop ~ AOI*(ot1)+(1|ps),data = response_time[response_time$scramb==2,], REML = FALSE)
+model_time_sequence_scramb3 <- lmer(Prop ~ AOI*(ot1+ot2)+(1|ps),data = response_time[response_time$scramb==2,], REML = FALSE)
+
+anova(model_time_sequence_scramb1,model_time_sequence_scramb2)
+anova(model_time_sequence_scramb1,model_time_sequence_scramb3)
+# Linear + quadratic improves - but linear itself did not - is quadratic better than linear/quadratic?
+
+model_time_sequence_scramb4 <- lmer(Prop ~ AOI*(ot2)+(1|ps),data = response_time[response_time$scramb==2,], REML = FALSE)
+anova(model_time_sequence_scramb4,model_time_sequence_scramb3)
+# Yes it is
+
+
+# Model 4 is best fitting (cubic term, but no linear term)
+plot(response_time[response_time$scramb==2,], predictor_column = c("AOI"), dv = "Prop", model = model_time_sequence_scramb4) +theme_light()
+
+
+
+# Divergence analysis
+# Because of the weird eyetrackingR synntax, we need to restructure the data slightly so that we can investigate the main effect of AOI.
+# So we instead look at whether the observer was looking into the
+# left or right AOI as a function of where the social image was.
+
+response_time2 <- make_time_sequence_data(data, time_bin_size = 100,aois = c("isinL","isinR"),summarize_by = "ps",predictor_columns = c("scramb","X3"))
+
+# X3 codes where the social image was.
+response_time2$side=factor(response_time2$X3)
+
+tb_analysis_INT <- analyze_time_bins(data = response_time2[response_time2$scramb==1,],test = "t.test",aoi=c("isinL"),predictor_column =c("side"),  alpha = .05,p_adjust_method = 'holm')
+plot(tb_analysis_INT)
+
+
+# Intact - Significant everywhere from 100 ms onwards
+summary(tb_analysis_INT)
+
+
+tb_analysis_SCR <- analyze_time_bins(data = response_time2[response_time2$scramb==2,],test = "t.test",aoi=c("isinL"),predictor_column =c("side"),  alpha = .05,p_adjust_method = 'holm')
+plot(tb_analysis_SCR)
+
+
+# Scrambled - no significant effects when adjusting for time bins!
+summary(tb_analysis_SCR)
+
+
+
+# Where do intact images diverge from scrambled images in terms of looking at the social AOI
+tb_analysis <- analyze_time_bins(data = response_time,test = "t.test",aoi=c("SOCIAL"),predictor_column =c("scramb"),  alpha = .05,p_adjust_method = 'holm')
+
+plot(tb_analysis, type = "estimate") + theme_light()
+
+summary(tb_analysis)
+
 
 
 response_timeR <- make_time_sequence_data(data, time_bin_size = 100,aois = c("isinR"),predictor_columns=c("X3"),summarize_by = "ps")
@@ -346,6 +416,32 @@ data_summaryR <- describe_data(response_window,describe_column='isinR', group_co
 xR=plot(data_summaryR)
 xR2=xR+xlab("Social Image Location")+ggtitle("Proportion viewing right image")
 
+
+gh=data.frame()
+# Plot fixed effects
+plotfixed=function(model){
+for (sub in 1:77){
+linear=ranef(model)$ps$ot1[sub]*response_time$ot1[1:50]
+quadratic=ranef(model)$ps$ot2[sub]*response_time$ot2[1:50]
+timebin=response_time$TimeBin[1:50]
+gh=data.frame(rbind(cbind(sub,timebin,linear,quadratic),gh))
+}
+  return(gh)
+}
+
+curvesIN=plotfixed(model_time_sequence_intact3)
+curvesSC=plotfixed(model_time_sequence_scramb3)
+
+curvesall=rbind(curvesIN,curvesSC)
+curvesall$stim=rep(c(1,2),each=3850)
+curvesall$stim=factor(curvesall$stim)
+
+ggplot(curvesall,aes(x=timebin,y=linear))+facet_wrap(~sub,nrow=8)+geom_point(aes(colour=stim))
+
+
+
+
+curves=plotfixed(model_time_sequence_intact3)
 
 multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
   require(grid)
