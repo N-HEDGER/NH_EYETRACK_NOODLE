@@ -16,7 +16,9 @@ output:
 | [Growth Curve Analysis](#growthcurve) | Model change in gaze bias over time | **Complete** |
 | [Divergence Analysis](#divergence) | Apply tests to determine when predictors had an effect | **Complete** |
 | [Switching Analysis](#switching) | Model swtiches from one AOI to another | **Complete** |
-| [Individual differences](#indiff) | Look at relationship between individual random effects and EQ data | Incomplete |
+| [Individual differences](#indiff) | Look at relationship between individual characteristics and gaze bias | **Complete** |
+| [Cross validation](#crossval) | Final model that fits individual differences | Incomplete |
+
 
 Still to do:
 
@@ -54,10 +56,6 @@ data <- make_eyetrackingr_data(EXPDATA_FRAME_BIG,
 ## To map `funs` over a selection of variables, use `mutate_at()`
 ```
 
-```
-## Warning: package 'bindrcpp' was built under R version 3.2.5
-```
-
 ```r
 data$scramb=factor(data$scramb)
 data$X3=factor(data$X3,levels=c(1,2),labels=c("LeftSoc","Rightsoc"))
@@ -71,13 +69,6 @@ data$X3=factor(data$X3,levels=c(1,2),labels=c("LeftSoc","Rightsoc"))
 
 ```r
 library(ggplot2)
-```
-
-```
-## Warning: package 'ggplot2' was built under R version 3.2.5
-```
-
-```r
 response_window_agg_by_sub <- make_time_window_data(data, aois=c("SOCIAL","NONSOCIAL"),summarize_by = "ps",predictor_columns = c("scramb"))
 ```
 
@@ -102,10 +93,6 @@ library(lme4)
 ```
 
 ```
-## Warning: package 'lme4' was built under R version 3.2.5
-```
-
-```
 ## Loading required package: Matrix
 ```
 
@@ -114,15 +101,7 @@ library(afex)
 ```
 
 ```
-## Warning: package 'afex' was built under R version 3.2.5
-```
-
-```
 ## Loading required package: lsmeans
-```
-
-```
-## Warning: package 'lsmeans' was built under R version 3.2.5
 ```
 
 ```
@@ -167,15 +146,11 @@ library(phia)
 ```
 
 ```
-## Warning: package 'car' was built under R version 3.2.5
+## Warning: package 'car' was built under R version 3.4.3
 ```
 
 ```r
 library(nlme)
-```
-
-```
-## Warning: package 'nlme' was built under R version 3.2.5
 ```
 
 ```
@@ -184,9 +159,9 @@ library(nlme)
 ```
 
 ```
-## The following objects are masked from 'package:lme4':
+## The following object is masked from 'package:lme4':
 ## 
-##     lmList, sigma
+##     lmList
 ```
 
 ```r
@@ -194,15 +169,7 @@ library(effects)
 ```
 
 ```
-## Warning: package 'effects' was built under R version 3.2.5
-```
-
-```
 ## Loading required package: carData
-```
-
-```
-## Warning: package 'carData' was built under R version 3.2.5
 ```
 
 ```
@@ -824,37 +791,6 @@ ggplot(response_time_mod_sc[response_time_mod_sc$scramb==2,],aes(x=TimeBin,y=Pro
 
 ![](EYETRACK_ANALYSIS_files/figure-html/unnamed-chunk-18-1.png)<!-- -->
 
-### Plot linear and quadratic random effects
-
-
-```r
-gh=data.frame()
-# Plot fixed effects
-getrand=function(model){
-for (sub in 1:77){
-linear=ranef(model)$ps$ot1[sub]*response_time$ot1[1:50]
-quadratic=ranef(model)$ps$ot2[sub]*response_time$ot2[1:50]
-modellin=fixef(model)[3]*response_time$ot1[1:50]
-modelquad=fixef(model)[4]*response_time$ot2[1:50]
-modfull=modellin+modelquad
-indfull=linear+quadratic
-timebin=response_time$TimeBin[1:50]
-gh=data.frame(rbind(cbind(sub,timebin,linear,quadratic,modellin,modelquad,modfull,indfull),gh))
-}
-  return(gh)
-}
-
-curvesIN=getrand(model_time_sequence_intact3)
-curvesSC=getrand(model_time_sequence_scramb3)
-
-curvesall=rbind(curvesIN,curvesSC)
-curvesall$scramb=rep(c(1,2),each=3850)
-curvesall$scramb=factor(curvesall$scramb,levels=c(1,2),labels=c("intact","scrambled"))
-
-ggplot(curvesall,aes(x=timebin,y=indfull))+facet_wrap(~sub,nrow=8)+geom_point(aes(colour=scramb))
-```
-
-![](EYETRACK_ANALYSIS_files/figure-html/unnamed-chunk-19-1.png)<!-- -->
 
 ### Load in the EQ Data
 
@@ -867,13 +803,7 @@ EQE=EQ_DATA$EQ.Emotion
 EQC=EQ_DATA$EQ.Cognitive
 
 library(stringr)
-```
 
-```
-## Warning: package 'stringr' was built under R version 3.2.5
-```
-
-```r
 # EQ data doesnt belong to everyone (only 69 people)
 EQ_PS=as.numeric(str_extract(EQ_DATA$pps, "[0-9]+"))
 ```
@@ -898,22 +828,28 @@ response_time_new <- make_time_sequence_data(data, time_bin_size = 100,aois = c(
 ```
 
 ```r
-response_time_new$EQ=rep(NA,nrow(response_time_new))
+# Here I am adjusting for the fact that our ps factor and the unique labels we need to match to the EQ data currently dont mean the same thing (because the unique labels went from 21-23 (skipping 22).
 
-# Add EQ data. Here I add the 'Social' subscale (no effects are detected for other sub-scales, or for total EQ score)
-for (sub in 1:length(EQ_PS)-1){
-  response_time_new[response_time_new$ps==EQ_PS[sub],]$EQ=EQS[sub]
+response_time_adjust_ps=response_time_new
+response_time_adjust_ps$ps=as.numeric(response_time_adjust_ps$ps)
+response_time_adjust_ps$ps=factor(ifelse(response_time_adjust_ps$ps>21,response_time_adjust_ps$ps+1,response_time_adjust_ps$ps))
+
+response_time_adjust_ps$EQ=rep(NA,nrow(response_time_adjust_ps))
+
+# Add EQ data. Here I add the overall score (no effects are detected for other sub-scales)
+for (sub in 1:length(EQ_PS)){
+  response_time_adjust_ps[response_time_adjust_ps$ps==EQ_PS[sub],]$EQ=EQ[sub]
 }
 
 # Intact images, look for the effect of EQS in each time bin
-df_timeclust_between <- make_time_cluster_data(response_time_new[response_time_new$scramb==1,], test= "lm",predictor_column = "EQ", threshold = threshold_t)
+df_timeclust_between <- make_time_cluster_data(response_time_adjust_ps[response_time_adjust_ps$scramb==1,], test= "lm",predictor_column = "EQ", threshold = threshold_t)
 
 plot(df_timeclust_between) +  ylab("T-Statistic") + theme_light()
 ```
 
-![](EYETRACK_ANALYSIS_files/figure-html/unnamed-chunk-21-1.png)<!-- -->
+![](EYETRACK_ANALYSIS_files/figure-html/unnamed-chunk-20-1.png)<!-- -->
 
-There are 3 clusters. Perform a bootstrapping analysis to see if these could have been obtained by chance. 
+There is a fairly large cluster towards the end. Perform a bootstrapping analysis to see if this cluster could have been obtained by chance. 
 
 
 ```r
@@ -933,35 +869,97 @@ summary(clust_analysis_between)
 ## Predictor:	 EQ 
 ## Formula:	 Prop ~ EQ 
 ## Null Distribution   ====== 
-##  Mean:		 -0.4788 
-##  2.5%:		 -21.2021 
-## 97.5%:		 14.4226 
+##  Mean:		 -0.0915 
+##  2.5%:		 -19.9911 
+## 97.5%:		 22.9388 
 ## Summary of Clusters ======
 ##   Cluster Direction SumStatistic StartTime EndTime Probability
-## 1       1  Positive     6.729117       700    1000       0.160
-## 2       2  Positive     8.717798      3400    3800       0.126
-## 3       3  Positive    24.567173      4200    5100       0.030
+## 1       1  Positive     65.32305      2800    5100       0.004
 ```
 
 ```r
 plot(clust_analysis_between)
 ```
 
-![](EYETRACK_ANALYSIS_files/figure-html/unnamed-chunk-22-1.png)<!-- -->
+![](EYETRACK_ANALYSIS_files/figure-html/unnamed-chunk-21-1.png)<!-- -->
 
-Only the last cluster is significant after the permutation test. The social component of the EQ predicts enhanced gaze towards the end of the trial 4200ms onwards (p=.047).
+Only the last cluster is significant after the permutation test. EQ predicts enhanced gaze in the social AOI at the end of the trial 2800ms onwards (p=.004). Similar tests on the subscales show that this is driven by the Emotional and Cognitive components
 
 As a sanity check, I also applied the same tests for scrambled images and found no effects.
 
-### See whether the random effects for the linear and quadratic terms of the growthcurve model are related to empathy.
+### Import the GE data
+
+```r
+GE_DATA=read.csv("GlobalEffectSummary.csv")
+GE_PS=as.numeric(str_extract(GE_DATA$pps, "[0-9]+"))
+GE=GE_DATA$angle.unsc
+
+response_time_adjust_ps$GE=rep(NA,nrow(response_time_adjust_ps))
+for (sub in 1:length(GE_PS)){
+  response_time_adjust_ps[response_time_adjust_ps$ps==GE_PS[sub],]$GE=GE[sub]
+}
+
+num_sub = length(unique((GE_PS)))
+threshold_t = qt(p = 1 - .05/2, df = num_sub-1)
+
+# Intact images, look for the effect of GE in each time bin
+df_timeclust_between_GE <- make_time_cluster_data(response_time_adjust_ps[response_time_adjust_ps$scramb==1,], test= "lm",predictor_column = "GE", threshold = threshold_t)
+
+plot(df_timeclust_between_GE) +  ylab("T-Statistic") + theme_light()
+```
+
+![](EYETRACK_ANALYSIS_files/figure-html/unnamed-chunk-22-1.png)<!-- -->
+
+Global effect is predictive of bias towards the social image early in the time sequence. This may not survive the cluster-based analysis because the cluster has been split in two due to a small downward blip in just one time-bin. Considering this as two clusters may be over-conservative - it seems more likely that the data are just noisy, and so we should perhaps ignore this small variation that may just be noise.
+
 
 
 ```r
-linear=rep(0,68)
-for (sub in 1:length(EQ_PS)-1){
-  linear[sub]=ranef(model_time_sequence_intact3)$ps$ot2[sub]
-}
+clust_analysis_between_GE <- analyze_time_clusters(df_timeclust_between_GE, within_subj = FALSE, samples=1000)
 ```
 
+```
+## Install package 'pbapply' for a progress bar in this function.
+```
+
+```r
+summary(clust_analysis_between_GE)
+```
+
+```
+## Test Type:	 lm 
+## Predictor:	 GE 
+## Formula:	 Prop ~ GE 
+## Null Distribution   ====== 
+##  Mean:		 0.4431 
+##  2.5%:		 -23.7339 
+## 97.5%:		 29.7935 
+## Summary of Clusters ======
+##   Cluster Direction SumStatistic StartTime EndTime Probability
+## 1       1  Positive     2.055029         0     100       0.414
+## 2       2  Positive     9.811792       200     600       0.155
+```
+
+```r
+plot(clust_analysis_between_GE)
+```
+
+![](EYETRACK_ANALYSIS_files/figure-html/unnamed-chunk-23-1.png)<!-- -->
+
+So this ends up not being significant, but as mentioned above - there is sufficient reason to consider the effect 'signal' rather than 'noise'
+
+***
+
+<a id='crossval'></a>
+
+## Cross Validation/ model selection
+
+Here we have an indication that both EQ and GE have an influence on gaze bias at different times in the timecourse.
+
+The next logical thing to do seems to be to allow these factors to interact with the fitted time polynomials from the growth curve analysis.
+
+There is a danger of over-fitting the data here - so we should do a leave one out analysis to assess generalisation performance.
+
+Since the EQ and GE data are only available for a some of participants, we need to do the model fitting on a reduced subset of the data. 
 
 
