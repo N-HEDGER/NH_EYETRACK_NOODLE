@@ -869,9 +869,9 @@ summary(clust_analysis_between)
 ## Predictor:	 EQ 
 ## Formula:	 Prop ~ EQ 
 ## Null Distribution   ====== 
-##  Mean:		 -0.0915 
-##  2.5%:		 -19.9911 
-## 97.5%:		 22.9388 
+##  Mean:		 -0.3219 
+##  2.5%:		 -23.3708 
+## 97.5%:		 23.1349 
 ## Summary of Clusters ======
 ##   Cluster Direction SumStatistic StartTime EndTime Probability
 ## 1       1  Positive     65.32305      2800    5100       0.004
@@ -931,13 +931,13 @@ summary(clust_analysis_between_GE)
 ## Predictor:	 GE 
 ## Formula:	 Prop ~ GE 
 ## Null Distribution   ====== 
-##  Mean:		 0.4431 
-##  2.5%:		 -23.7339 
-## 97.5%:		 29.7935 
+##  Mean:		 0.1378 
+##  2.5%:		 -27.338 
+## 97.5%:		 23.2422 
 ## Summary of Clusters ======
 ##   Cluster Direction SumStatistic StartTime EndTime Probability
-## 1       1  Positive     2.055029         0     100       0.414
-## 2       2  Positive     9.811792       200     600       0.155
+## 1       1  Positive     2.055029         0     100       0.410
+## 2       2  Positive     9.811792       200     600       0.154
 ```
 
 ```r
@@ -961,5 +961,376 @@ The next logical thing to do seems to be to allow these factors to interact with
 There is a danger of over-fitting the data here - so we should do a leave one out analysis to assess generalisation performance.
 
 Since the EQ and GE data are only available for a some of participants, we need to do the model fitting on a reduced subset of the data. 
+
+
+
+```r
+# First, reduce the data so that we are restricted to only subjects who have EQ and GE data.
+response_timeT <- make_time_sequence_data(data, time_bin_size = 100,aois = c("NONSOCIAL","SOCIAL"),summarize_by = "ps",predictor_columns = c("scramb"))
+```
+
+```
+## Analyzing NONSOCIAL...
+```
+
+```
+## Warning in make_time_sequence_data(data = data, time_bin_size =
+## time_bin_size, : With the current time-bin size, the final time-bin has a
+## much smaller number of distinct samples than the other time-bins. Consider
+## choosing a different time-bin size or using 'subset_by_window' to remove
+## this portion of the trial.
+```
+
+```
+## Analyzing SOCIAL...
+```
+
+```
+## Warning in make_time_sequence_data(data = data, time_bin_size =
+## time_bin_size, : With the current time-bin size, the final time-bin has a
+## much smaller number of distinct samples than the other time-bins. Consider
+## choosing a different time-bin size or using 'subset_by_window' to remove
+## this portion of the trial.
+```
+
+```r
+# Adjust the participant factor to account for the fact that there was no p 22.
+response_time_adjust_ps=response_timeT
+response_time_adjust_ps$ps=as.numeric(response_time_adjust_ps$ps)
+response_time_adjust_ps$ps=factor(ifelse(response_time_adjust_ps$ps>21,response_time_adjust_ps$ps+1,response_time_adjust_ps$ps))
+
+response_time_adjust_ps$EQ=rep(NA,nrow(response_time_adjust_ps))
+
+# Add the EQ and GE data
+for (sub in 1:length(EQ_PS)){
+  response_time_adjust_ps[response_time_adjust_ps$ps==EQ_PS[sub],]$EQ=EQ[sub]
+}
+
+response_time_adjust_ps$GE=rep(NA,nrow(response_time_adjust_ps))
+for (sub in 1:length(GE_PS)){
+  response_time_adjust_ps[response_time_adjust_ps$ps==GE_PS[sub],]$GE=GE[sub]
+}
+
+
+# Remove individuals with no EQ or GE data
+EQFRAME=response_time_adjust_ps[!is.na(response_time_adjust_ps$EQ),]
+EQFRAME$AOI=factor(EQFRAME$AOI)
+EQGEFRAME=EQFRAME[!is.na(EQFRAME$GE),]
+```
+
+Now we have our reduced dataset, its time to fit some models
+
+
+```r
+# Model 1 - Just AOI
+model_1 <- lmer(Prop ~ AOI+(1|ps),data = EQGEFRAME[EQGEFRAME$scramb==1,], REML = FALSE)
+
+# Model 2 - linear
+model_2 <- lmer(Prop ~ AOI*(ot1)+(1 + ot1 |ps),data = EQGEFRAME[EQGEFRAME$scramb==1,], REML = FALSE)
+
+# Model 2 - linear + quadratic
+model_3 <- lmer(Prop ~ AOI*(ot1+ot2)+(1 + ot1 + ot2 |ps),data = EQGEFRAME[EQGEFRAME$scramb==1,], REML = FALSE)
+
+
+anova(model_1,model_2,model_3)
+```
+
+```
+## Data: EQGEFRAME[EQGEFRAME$scramb == 1, ]
+## Models:
+## model_1: Prop ~ AOI + (1 | ps)
+## model_2: Prop ~ AOI * (ot1) + (1 + ot1 | ps)
+## model_3: Prop ~ AOI * (ot1 + ot2) + (1 + ot1 + ot2 | ps)
+##         Df     AIC     BIC logLik deviance  Chisq Chi Df Pr(>Chisq)    
+## model_1  4 -7062.2 -7035.3 3535.1  -7070.2                             
+## model_2  8 -7134.4 -7080.6 3575.2  -7150.4 80.117      4  < 2.2e-16 ***
+## model_3 13 -7167.9 -7080.5 3596.9  -7193.9 43.541      5   2.87e-08 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+```
+
+With our reduced data the same model appears to be the best fitting (AOI + linear + quadratic). Now add EQ - which was found to influence gaze bias in the divergence analysis.
+
+
+```r
+model_4 <- lmer(Prop ~ AOI*EQ*(ot1+ot2)+(1 + ot1 + ot2 |ps),data = EQGEFRAME[EQGEFRAME$scramb==1,], REML = FALSE)
+anova(model_4,model_3)
+```
+
+```
+## Data: EQGEFRAME[EQGEFRAME$scramb == 1, ]
+## Models:
+## model_3: Prop ~ AOI * (ot1 + ot2) + (1 + ot1 + ot2 | ps)
+## model_4: Prop ~ AOI * EQ * (ot1 + ot2) + (1 + ot1 + ot2 | ps)
+##         Df     AIC     BIC logLik deviance  Chisq Chi Df Pr(>Chisq)    
+## model_3 13 -7167.9 -7080.5 3596.9  -7193.9                             
+## model_4 19 -7434.1 -7306.4 3736.1  -7472.1 278.24      6  < 2.2e-16 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+```
+
+EQ improves the model fit. Now add GE too.
+
+
+
+```r
+model_5 <- lmer(Prop ~ AOI*EQ*GE*(ot1+ot2)+(1 + ot1 + ot2 |ps),data = EQGEFRAME[EQGEFRAME$scramb==1,], REML = FALSE)
+anova(model_5,model_4)
+```
+
+```
+## Data: EQGEFRAME[EQGEFRAME$scramb == 1, ]
+## Models:
+## model_4: Prop ~ AOI * EQ * (ot1 + ot2) + (1 + ot1 + ot2 | ps)
+## model_5: Prop ~ AOI * EQ * GE * (ot1 + ot2) + (1 + ot1 + ot2 | ps)
+##         Df     AIC     BIC logLik deviance  Chisq Chi Df Pr(>Chisq)    
+## model_4 19 -7434.1 -7306.4 3736.1  -7472.1                             
+## model_5 31 -7686.2 -7477.7 3874.1  -7748.2 276.02     12  < 2.2e-16 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+```
+This also improves on the model fit. Plot the predicted GE and EQ effects on the timecourse
+
+
+
+```r
+library(pracma)
+```
+
+```
+## Warning: package 'pracma' was built under R version 3.4.3
+```
+
+```
+## 
+## Attaching package: 'pracma'
+```
+
+```
+## The following object is masked from 'package:car':
+## 
+##     logit
+```
+
+```
+## The following objects are masked from 'package:Matrix':
+## 
+##     expm, lu, tril, triu
+```
+
+```r
+EQvec=linspace(range(EQGEFRAME$EQ)[1],range(EQGEFRAME$EQ)[2],10)
+GEvec=linspace(range(EQGEFRAME$GE)[1],range(EQGEFRAME$GE)[2],10)
+
+# Temporary frame by taking first subject
+
+temp=EQGEFRAME[EQGEFRAME$ps==1,]
+tempin=temp[temp$scramb==1,]
+
+# Assign 10 levels of EQ (min-max)
+VARFRAME=data.frame()
+for (EQi in 1:length(EQvec)){
+    TEMPFRAME=tempin
+    TEMPFRAME$EQ=rep(EQvec[EQi])
+    VARFRAME=rbind(TEMPFRAME,VARFRAME)
+}
+
+
+VARFRAME=VARFRAME[rep(seq_len(nrow(VARFRAME)), 10), ]
+
+# Assign 10 levels of GE
+VARFRAME$GE=rep(GEvec,each=1020)
+
+# Make the model predictions
+VARFRAME2=cbind(VARFRAME,predict(model_5,VARFRAME))
+
+# Plot the predictions.  
+colnames(VARFRAME2)=c(colnames(VARFRAME),"pred")
+VARFRAME2$GE=factor(VARFRAME2$GE)
+VARFRAME2$EQ=factor(VARFRAME2$EQ)
+
+ggplot(VARFRAME2,aes(x=TimeBin,y=Prop))+facet_grid(GE~EQ)+geom_line(aes(x=TimeBin,y=pred,colour=AOI),size=2,linetype="solid")
+```
+
+![](EYETRACK_ANALYSIS_files/figure-html/unnamed-chunk-28-1.png)<!-- -->
+
+Broadly - High empathy = greater separation at the end of the trial. Higher GE = greater separation at the start.
+
+And also plot the fitted data against participant data.
+
+
+
+```r
+mod=cbind(EQGEFRAME[EQGEFRAME$scramb==1 & !is.na(EQGEFRAME$Prop),],predict(model_5))
+
+colnames(mod)=c(colnames(EQGEFRAME),"pred")
+
+ggplot(mod[response_time_T_mod$scramb==1,],aes(x=TimeBin,y=Prop))+facet_wrap(~ps,nrow=8)+geom_line(aes(x=TimeBin,y=pred,colour=AOI),size=2,linetype="solid")+geom_point(aes(colour=AOI),size=0.5,shape=6)
+```
+
+![](EYETRACK_ANALYSIS_files/figure-html/unnamed-chunk-29-1.png)<!-- -->
+
+
+This seems quite nice, but we are at risk of over-fitting. Perform a cross-validation (the next bit is a bit long...).
+
+
+
+```r
+EQGEFRAME=EQGEFRAME[EQGEFRAME$scramb==1,]
+# We can get rid of redundant levels now, because all of the individual stuff is in the right place.
+EQGEFRAME$ps=factor(EQGEFRAME$ps)
+
+
+# Create a new environment for everything
+x=new.env()
+createLOOstruct=function(frame){
+  psvec=as.numeric(levels(frame$ps))
+  
+  # Define names to assign to in the new environment.
+  envsin=strcat("In",as.character(levels(frame$ps)),"env")
+  envsout=strcat("Out",as.character(levels(frame$ps)),"env")
+  actual=strcat("Actual",as.character(levels(frame$ps)),"env")
+  
+  fit1=strcat("Fit1",as.character(levels(frame$ps)),"env")
+  fitEQ=strcat("FitEQ",as.character(levels(frame$ps)),"env")
+  fitEQGE=strcat("FitEQGE",as.character(levels(frame$ps)),"env")
+  fitGE=strcat("FitGE",as.character(levels(frame$ps)),"env")
+  fitAOI=strcat("FitAOI",as.character(levels(frame$ps)),"env")
+  fitAOIlin=strcat("FitAOIlin",as.character(levels(frame$ps)),"env")
+  
+  predfit1=strcat("predfit1",as.character(levels(frame$ps)),"env")
+  predfitEQ=strcat("predfitEQ",as.character(levels(frame$ps)),"env")
+  predfitEQGE=strcat("predfitEQGE",as.character(levels(frame$ps)),"env")
+  predfitGE=strcat("predfitGE",as.character(levels(frame$ps)),"env")
+  predfitAOI=strcat("predfitAOI",as.character(levels(frame$ps)),"env")
+  predfitAOIlin=strcat("predfitAOIlin",as.character(levels(frame$ps)),"env")
+  
+  error=strcat("error",as.character(levels(frame$ps)),"env")
+  errorEQ=strcat("errorEQ",as.character(levels(frame$ps)),"env")
+  errorEQGE=strcat("errorEQGE",as.character(levels(frame$ps)),"env")
+  errorGE=strcat("errorGE",as.character(levels(frame$ps)),"env")
+  errorAOI=strcat("errorAOI",as.character(levels(frame$ps)),"env")
+  errorAOIlin=strcat("errorAOIlin",as.character(levels(frame$ps)),"env")
+  
+  # For each participant
+  for (i in 1:length(psvec)){
+    # Create a frame that includes everyone but the one subject ('kept in' frame).
+    assign(envsin[i],frame[frame$ps!=psvec[i],], envir = x)
+    # Create a frame that includes just the one subject ('left out' frame)
+    assign(envsout[i],frame[frame$ps==psvec[i] & !is.na(frame$Prop) ,], envir = x)
+   
+    # Fit a bunch of  models to the 'kept in' frame
+    assign(fit1[i],lmer(Prop ~ AOI*(ot1+ot2)+(1 + ot1 + ot2 |ps),data = get(envsin[i],envir=x), REML = FALSE), envir = x)
+    assign(fitEQ[i],lmer(Prop ~ AOI*EQ*(ot1+ot2)+(1 + ot1 + ot2 |ps),data = get(envsin[i],envir=x), REML = FALSE), envir = x)
+    assign(fitEQGE[i],lmer(Prop ~ AOI*EQ*GE*(ot1+ot2)+(1 + ot1 + ot2 |ps),data = get(envsin[i],envir=x), REML = FALSE), envir = x)
+    assign(fitGE[i],lmer(Prop ~ AOI*GE*(ot1+ot2)+(1 + ot1 + ot2 |ps),data = get(envsin[i],envir=x), REML = FALSE), envir = x)
+    assign(fitAOI[i],lmer(Prop ~ AOI+(1 |ps),data = get(envsin[i],envir=x), REML = FALSE), envir = x)
+    assign(fitAOIlin[i],lmer(Prop ~ AOI*(ot1)+(1 + ot1 |ps),data = get(envsin[i],envir=x), REML = FALSE), envir = x)
+    
+    # Get the actual values for the left-out subject.
+    assign(actual[i],get(envsout[i],envir=x)$Prop, envir = x)
+    
+    # Original model
+    # Using the model fits, get the predictions for the 'left out' data and compute the sum of squares.
+    assign(predfit1[i],predict(get(fit1[i],envir = x),get(envsout[i],envir=x),allow.new.levels = TRUE), envir = x)
+    assign(error[i],sum((get(actual[i],envir=x) - get(predfit1[i],envir=x)) ^2), envir = x)
+    
+    
+    # +EQ model
+    assign(predfitEQ[i],predict(get(fitEQ[i],envir = x),get(envsout[i],envir=x),allow.new.levels = TRUE), envir = x)
+    assign(errorEQ[i],sum((get(actual[i],envir=x) - get(predfitEQ[i],envir=x)) ^2), envir = x)
+    
+    # +EQ + GE model
+    assign(predfitEQGE[i],predict(get(fitEQGE[i],envir = x),get(envsout[i],envir=x),allow.new.levels = TRUE), envir = x)
+    assign(errorEQGE[i],sum((get(actual[i],envir=x) - get(predfitEQGE[i],envir=x)) ^2), envir = x)
+    
+    # Just GE model
+    assign(predfitGE[i],predict(get(fitGE[i],envir = x),get(envsout[i],envir=x),allow.new.levels = TRUE), envir = x)
+    assign(errorGE[i],sum((get(actual[i],envir=x) - get(predfitGE[i],envir=x)) ^2), envir = x)
+    
+    # Just AOI model
+    assign(predfitAOI[i],predict(get(fitAOI[i],envir = x),get(envsout[i],envir=x),allow.new.levels = TRUE), envir = x)
+    assign(errorAOI[i],sum((get(actual[i],envir=x) - get(predfitAOI[i],envir=x)) ^2), envir = x)
+    
+    # Just AOI and linear
+    assign(predfitAOIlin[i],predict(get(fitAOIlin[i],envir = x),get(envsout[i],envir=x),allow.new.levels = TRUE), envir = x)
+    assign(errorAOIlin[i],sum((get(actual[i],envir=x) - get(predfitAOIlin[i],envir=x)) ^2), envir = x)
+    
+  }
+  return(x)
+}
+
+LOOSTRUCT=createLOOstruct(EQGEFRAME)
+```
+
+```
+## Warning in optwrap(optimizer, devfun, getStart(start, rho$lower, rho$pp), :
+## convergence code 3 from bobyqa: bobyqa -- a trust region step failed to
+## reduce q
+
+## Warning in optwrap(optimizer, devfun, getStart(start, rho$lower, rho$pp), :
+## convergence code 3 from bobyqa: bobyqa -- a trust region step failed to
+## reduce q
+```
+
+```r
+psvec=as.numeric(levels(EQGEFRAME$ps))
+
+crossval=rep(0,length(psvec))
+crossvalEQ=rep(0,length(psvec))
+crossvalEQGE=rep(0,length(psvec))
+crossvalGE=rep(0,length(psvec))
+crossvalAOI=rep(0,length(psvec))
+crossvalAOIlin=rep(0,length(psvec))
+
+
+error=strcat("error",as.character(levels(EQGEFRAME$ps)),"env")
+errorEQ=strcat("errorEQ",as.character(levels(EQGEFRAME$ps)),"env")
+errorEQGE=strcat("errorEQGE",as.character(levels(EQGEFRAME$ps)),"env")
+errorGE=strcat("errorGE",as.character(levels(EQGEFRAME$ps)),"env")
+errorAOI=strcat("errorAOI",as.character(levels(EQGEFRAME$ps)),"env")
+errorAOIlin=strcat("errorAOIlin",as.character(levels(EQGEFRAME$ps)),"env")
+
+for (i in 1:length(psvec)){
+crossval[i]= get(error[i],envir=LOOSTRUCT)
+crossvalEQ[i]= get(errorEQ[i],envir=LOOSTRUCT)
+crossvalEQGE[i]= get(errorEQGE[i],envir=LOOSTRUCT)
+crossvalGE[i]= get(errorGE[i],envir=LOOSTRUCT)
+crossvalAOI[i]= get(errorAOI[i],envir=LOOSTRUCT)
+crossvalAOIlin[i]= get(errorAOIlin[i],envir=LOOSTRUCT)
+}
+```
+
+Plot the results of the LOO analysis
+
+
+
+```r
+PLOTLOOFRAME=data.frame(cbind(rep(1:6,each=length(psvec))),c(crossvalAOI,crossvalAOIlin,crossval,crossvalEQ,crossvalGE,crossvalEQGE))
+
+colnames(PLOTLOOFRAME)=c("Model","Crossval")
+
+PLOTLOOFRAME$Model=factor(PLOTLOOFRAME$Model,levels=c(1:6),labels=c("AOI","AOI*lin","AOI*lin+quad","AOI*lin*quad+EQ","AOI*lin*quad*GE","AOI*lin*quad*EQ*GE"))
+
+
+ggplot(PLOTLOOFRAME,aes(x=Model,y=Crossval))+geom_point(alpha=.5,position=position_jitter(w=0.3))+stat_summary(fun.y = mean, geom="point",colour="blue",size=5)+geom_hline(yintercept = mean(crossvalEQ))
+```
+
+![](EYETRACK_ANALYSIS_files/figure-html/unnamed-chunk-31-1.png)<!-- -->
+
+
+Model 4 (AOI+lin+quad+EQ) has the best cross-validation performance. It seems as though models involving GE are over-fitting. Plot the best model after cross-validation.
+
+
+```r
+mod=cbind(EQGEFRAME[EQGEFRAME$scramb==1 & !is.na(EQGEFRAME$Prop),],predict(model_4))
+
+colnames(mod)=c(colnames(EQGEFRAME),"pred")
+
+ggplot(mod[response_time_T_mod$scramb==1,],aes(x=TimeBin,y=Prop))+facet_wrap(~ps,nrow=8)+geom_line(aes(x=TimeBin,y=pred,colour=AOI),size=2,linetype="solid")+geom_point(aes(colour=AOI),size=0.5,shape=6)
+```
+
+![](EYETRACK_ANALYSIS_files/figure-html/unnamed-chunk-32-1.png)<!-- -->
+
 
 
