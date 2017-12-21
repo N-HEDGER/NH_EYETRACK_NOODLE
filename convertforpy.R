@@ -107,7 +107,8 @@ length(unique(data2$id))
 data3=data2[!(data2$id %in% indices),]
 
 length(unique(data3$id))
-
+data3$id=rep(1:6113,each=500)
+data3$time=rep(1:500,6113)
 
 vectorO=rep(0,length(unique(data3$id)))
 
@@ -121,29 +122,64 @@ for (i in 1:length(unique(data3$id))){
 indices2=which(vectorO>300)
 
 
-
 data4=data3[!(data3$id %in% indices2),]
-
-
 
 length(unique(data4$id))
 
 # Relabel new dataframe
-data4$id=rep(1:5952,each=500)
-data4$time=rep(1:500,5952)
-
-# Now we need to create a new array for the labels.
+data4$id=rep(1:5950,each=500)
+data4$time=rep(1:500,5950)
 
 
-scramb=rep(0,length(unique(data4$id)))
+vectorON=rep(0,length(unique(data4$id)))
 for (i in 1:length(unique(data4$id))){
   tempframe=data4[data4$id==i,]
+  vectorON[i]=nrow(tempframe[tempframe$isinL=="NA" & tempframe$isinR=="NA",])
+}
+
+
+
+xup=1600
+xlow=0
+yup=1000
+ylow=200
+  
+vectorXTREMEU=rep(0,length(unique(data4$id)))
+vectorXTREMEL=rep(0,length(unique(data4$id)))
+vectorYTREMEU=rep(0,length(unique(data4$id)))
+vectorYTREMEL=rep(0,length(unique(data4$id)))
+
+for (i in 1:length(unique(data4$id))){
+  tempframe=data4[data4$id==i,]
+  vectorXTREMEU[i]=sum(tempframe$X1>xup)
+  vectorXTREMEL[i]=sum(tempframe$X1<xlow)
+  vectorYTREMEU[i]=sum(tempframe$X2>yup)
+  vectorYTREMEL[i]=sum(tempframe$X2<ylow)
+  
+}
+
+
+indices3=c(which(vectorXTREMEU>0),which(vectorXTREMEL>0),which(vectorYTREMEU>0),which(vectorYTREMEL>0))
+
+data5=data4[!(data4$id %in% indices3),]
+
+length(unique(data5$id))
+
+# Relabel new dataframe
+data5$id=rep(1:5623,each=500)
+data5$time=rep(1:500,5623)
+
+
+
+scramb=rep(0,length(unique(data5$id)))
+for (i in 1:length(unique(data5$id))){
+  tempframe=data5[data5$id==i,]
   scramb[i]=tempframe$scramb[1]
 }
 
 
 
-TIMESERIES=data.frame(cbind(data4$id,data4$time,data4$X1,data4$X2,data4$ps))
+TIMESERIES=data.frame(cbind(data5$id,data5$time,data5$X1,data5$X2,data5$ps))
 
 head(TIMESERIES)
 
@@ -159,7 +195,7 @@ write.csv(TIMESERIES,"TIMESERIES_CLEAN.csv")
 
 write.csv(SCLABS,"SCLABELS_CLEAN.csv")
 
-Plottime(data3,654)
+Plottime(data4,2766)
 
 
 data5=data4[data4$scramb==1,]
